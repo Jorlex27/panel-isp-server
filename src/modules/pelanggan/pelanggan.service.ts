@@ -1,7 +1,7 @@
-import { ObjectId, type OptionalId } from 'mongodb';
+import { ObjectId } from 'mongodb';
 import { db } from '@shared/utils/db.util';
 import { ApiError } from '@shared/errors/api-error';
-import type { LanggananPopulated, PelangganDoc, PelangganPopulated } from '@shared/types/doc.types';
+import type { LanggananPopulated, PelangganPopulated } from '@shared/types/doc.types';
 import * as paketService from '@modules/paket/paket.service';
 import * as langgananService from '@modules/langganan/langganan.service';
 import {
@@ -88,7 +88,7 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
         updatedAt: now,
     };
 
-    const insertPel = await col().insertOne(pelDoc as OptionalId<PelangganDoc>);
+    const insertPel = await col().insertOne(pelDoc as never);
     const pelangganId = insertPel.insertedId;
 
     try {
