@@ -91,8 +91,7 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
     const paket = await paketService.getPaket(paketId);
     const now = new Date();
     const mulai = input.tanggalMulai ?? now;
-    const expire =
-        input.tanggalExpire ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const expire = input.tanggalExpire ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const statusBayar = input.statusBayar ?? 'belum_bayar';
     const statusPel = input.status ?? 'aktif';
     const ipAddress = await assignNextIp();
@@ -108,33 +107,22 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
         updatedAt: now,
     };
 
-    const insertPel = await col().insertOne(pelDoc as never);
-    const pelangganId = insertPel.insertedId;
-
-    try {
-        await langgananService.insertLangganan({
-            pelangganId,
-            paketId,
-            tanggalMulai: mulai,
-            tanggalExpire: expire,
-            statusBayar,
-        });
-    } catch (error: unknown) {
-        await col().deleteOne({ _id: pelangganId });
-        throw error;
-    }
-
-    try {
-        await tambahPelanggan(
-            ipAddress,
-            input.macAddress,
-            paket.speedDown,
-            paket.speedUp,
-            input.nama
+    const pelangganId = await db.withTransaction(async (session) => {
+        const insertPel = await col().insertOne(pelDoc as never, { session });
+        await langgananService.insertLangganan(
+            { pelangganId: insertPel.insertedId, paketId, tanggalMulai: mulai, tanggalExpire: expire, statusBayar },
+            session
         );
+        return insertPel.insertedId;
+    });
+
+    try {
+        await tambahPelanggan(ipAddress, input.macAddress, paket.speedDown, paket.speedUp, input.nama);
     } catch (error: unknown) {
-        await langgananService.deleteByPelangganId(pelangganId);
-        await col().deleteOne({ _id: pelangganId });
+        await db.withTransaction(async (session) => {
+            await langgananService.deleteByPelangganId(pelangganId, session);
+            await col().deleteOne({ _id: pelangganId }, { session });
+        });
         throw error;
     }
 
@@ -167,8 +155,10 @@ export async function aktifkanPelangganDb(id: ObjectId): Promise<PelangganPopula
 export async function deletePelangganDb(id: ObjectId): Promise<void> {
     const pel = await getPelanggan(id);
     await hapusPelanggan(pel.ipAddress, pel.nama);
-    await langgananService.deleteByPelangganId(id);
-    await col().deleteOne({ _id: id });
+    await db.withTransaction(async (session) => {
+        await langgananService.deleteByPelangganId(id, session);
+        await col().deleteOne({ _id: id }, { session });
+    });
 }
 
 export async function bayarPelanggan(

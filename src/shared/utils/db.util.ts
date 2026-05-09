@@ -1,4 +1,4 @@
-import { MongoClient, type Collection, type Db } from 'mongodb';
+import { MongoClient, type ClientSession, type Collection, type Db } from 'mongodb';
 import { dbConfig } from '@config/db.config';
 import { ApiError } from '@shared/errors/api-error';
 import type { AdminDoc, LanggananDoc, PaketDoc, PelangganDoc } from '@shared/types/doc.types';
@@ -49,6 +49,24 @@ class Database {
         const pelanggan = this.getCollection('pelanggan');
         await pelanggan.createIndex({ ipAddress: 1 }, { unique: true });
         await pelanggan.createIndex({ macAddress: 1 }, { unique: true });
+    }
+
+    async withTransaction<T>(fn: (session: ClientSession) => Promise<T>): Promise<T> {
+        const session = this.getClient().startSession();
+        try {
+            let result!: T;
+            await session.withTransaction(async () => {
+                result = await fn(session);
+            });
+            return result;
+        } finally {
+            await session.endSession();
+        }
+    }
+
+    private getClient(): MongoClient {
+        if (!this.client) throw new ApiError('Database belum diinisialisasi', 500, 'DB_NOT_READY');
+        return this.client;
     }
 
     isConnected(): boolean {

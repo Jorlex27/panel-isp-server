@@ -1,4 +1,4 @@
-import type { ObjectId } from 'mongodb';
+import type { ClientSession, ObjectId } from 'mongodb';
 import { db } from '@shared/utils/db.util';
 import { ApiError } from '@shared/errors/api-error';
 import type { LanggananPopulated, PembayaranItem } from '@shared/types/doc.types';
@@ -49,13 +49,16 @@ export async function requireByPelangganId(pelangganId: ObjectId): Promise<Langg
     return rows[0];
 }
 
-export async function insertLangganan(payload: {
-    pelangganId: ObjectId;
-    paketId: ObjectId;
-    tanggalMulai: Date;
-    tanggalExpire: Date;
-    statusBayar: 'lunas' | 'belum_bayar';
-}): Promise<LanggananPopulated> {
+export async function insertLangganan(
+    payload: {
+        pelangganId: ObjectId;
+        paketId: ObjectId;
+        tanggalMulai: Date;
+        tanggalExpire: Date;
+        statusBayar: 'lunas' | 'belum_bayar';
+    },
+    session?: ClientSession
+): Promise<LanggananPopulated> {
     const now = new Date();
     const doc = {
         ...payload,
@@ -63,7 +66,7 @@ export async function insertLangganan(payload: {
         createdAt: now,
         updatedAt: now,
     };
-    const res = await col().insertOne(doc as never);
+    const res = await col().insertOne(doc as never, { session });
     return getLangganan(res.insertedId);
 }
 
@@ -82,8 +85,8 @@ export async function createLanggananManual(payload: {
     return insertLangganan(payload);
 }
 
-export async function deleteByPelangganId(pelangganId: ObjectId): Promise<void> {
-    await col().deleteMany({ pelangganId });
+export async function deleteByPelangganId(pelangganId: ObjectId, session?: ClientSession): Promise<void> {
+    await col().deleteMany({ pelangganId }, { session });
 }
 
 export async function recordBayar(
