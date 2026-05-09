@@ -6,7 +6,9 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target node"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "hono": "^4.10.7",
+    "jsonwebtoken": "^9.0.3",
     "mongodb": "^7.0.0",
     "node-cron": "^4.2.1",
     "node-routeros": "^1.6.9",
@@ -14,7 +16,9 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/bun": "latest",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node-cron": "^3.0.11"
   }
 }
