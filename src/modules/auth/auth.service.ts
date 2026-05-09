@@ -21,8 +21,8 @@ export async function login(
     }
 
     const token = jwt.sign({ sub: username }, secret, { expiresIn });
-    const decoded = jwt.decode(token) as { exp: number };
-    const expiresAt = new Date(decoded.exp * 1000);
+    const decoded = jwt.decode(token) as { exp: number } | null;
+    const expiresAt = decoded ? new Date(decoded.exp * 1000) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     return { token, expiresAt };
 }

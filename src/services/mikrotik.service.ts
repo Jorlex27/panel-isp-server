@@ -1,4 +1,5 @@
 import { RouterOSAPI } from 'node-routeros';
+import { logger } from '@shared/utils/logger.util';
 
 function rosStr(row: Record<string, unknown>, key: string): string | undefined {
     const v = row[key];
@@ -102,6 +103,8 @@ export async function gantiPaketMikrotik(
                 `=.id=${id}`,
                 `=max-limit=${speedDown}M/${speedUp}M`,
             ]);
+        } else {
+            logger.warn(`gantiPaketMikrotik: queue '${nama}' tidak ditemukan di MikroTik`);
         }
     });
 }
