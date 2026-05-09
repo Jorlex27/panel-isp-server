@@ -16,6 +16,13 @@ app.use(
     })
 );
 
+app.use('*', async (c, next) => {
+    const start = Date.now();
+    await next();
+    const ms = Date.now() - start;
+    logger.info(`[${c.req.method}] ${c.req.path} → ${c.res.status} (${ms}ms)`);
+});
+
 app.get('/health', c => c.json({ status: 'OK' }));
 
 app.route('/api/v1', routers);
