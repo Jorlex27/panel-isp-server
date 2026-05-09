@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { db } from '@shared/utils/db.util';
 import { logger } from '@shared/utils/logger.util';
 import { suspendPelanggan } from '@/services/mikrotik.service';
-import { kirimWA } from '@/services/whatsapp.service';
+import { kirimDiscord } from '@/services/discord.service';
 
 async function suspendExpiredUnpaid(): Promise<void> {
     const langCol = db.getCollection('langganan');
@@ -26,13 +26,11 @@ async function suspendExpiredUnpaid(): Promise<void> {
                 { _id: pelangganId },
                 { $set: { status: 'suspend', updatedAt: new Date() } }
             );
-            const hp = typeof pel.noHp === 'string' ? pel.noHp : '';
-            if (hp) {
-                await kirimWA(
-                    hp,
-                    `Halo ${String(pel.nama)}, paket internet Anda sudah habis masa berlakunya. Hubungi kami untuk perpanjang.`
-                );
-            }
+            await kirimDiscord(
+                `**${String(pel.nama)}** (${typeof pel.noHp === 'string' ? pel.noHp : '-'}) telah di-suspend karena paket habis masa berlakunya.`,
+                'Pelanggan Di-suspend',
+                0xe74c3c
+            );
         } catch (error: unknown) {
             logger.error('Cron suspend gagal', error);
         }
@@ -56,16 +54,15 @@ async function remindExpiring(): Promise<void> {
             row.tanggalExpire instanceof Date ? row.tanggalExpire : new Date(row.tanggalExpire);
         const pel = await pelCol.findOne({ _id: pelangganId });
         if (!pel) continue;
-        const hp = typeof pel.noHp === 'string' ? pel.noHp : '';
-        if (!hp) continue;
         const sisa = Math.max(
             0,
             Math.ceil((expire.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
         );
         try {
-            await kirimWA(
-                hp,
-                `Halo ${String(pel.nama)}, masa aktif internet Anda tersisa ${sisa} hari. Silakan lakukan pembayaran.`
+            await kirimDiscord(
+                `**${String(pel.nama)}** (${typeof pel.noHp === 'string' ? pel.noHp : '-'}) masa aktifnya tersisa **${sisa} hari**. Segera lakukan pembayaran.`,
+                'Reminder Expire',
+                0xf39c12
             );
         } catch (error: unknown) {
             logger.error('Cron reminder gagal', error);
