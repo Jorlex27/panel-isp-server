@@ -1,21 +1,21 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { ApiError } from '@shared/errors/api-error';
+import { db } from '@shared/utils/db.util';
 
 export async function login(
     username: string,
     password: string
 ): Promise<{ token: string; expiresAt: Date }> {
-    const adminUsername = process.env.ADMIN_USERNAME ?? '';
-    const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH ?? '';
     const secret = process.env.JWT_SECRET ?? '';
     const expiresIn = (process.env.JWT_EXPIRES_IN ?? '7d') as jwt.SignOptions['expiresIn'];
 
-    if (username !== adminUsername) {
+    const admin = await db.getCollection('admin').findOne({ username });
+    if (!admin) {
         throw new ApiError('Username atau password salah', 401, 'INVALID_CREDENTIALS');
     }
 
-    const valid = await bcrypt.compare(password, adminPasswordHash);
+    const valid = await bcrypt.compare(password, admin.passwordHash);
     if (!valid) {
         throw new ApiError('Username atau password salah', 401, 'INVALID_CREDENTIALS');
     }

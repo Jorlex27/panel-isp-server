@@ -54,3 +54,9 @@ export interface PelangganPopulated extends PelangganDoc {
 export interface PaketPopulated extends PaketDoc {
     langganans: LanggananDoc[];
 }
+
+export interface AdminDoc {
+    _id: ObjectId;
+    username: string;
+    passwordHash: string;
+}

@@ -1,12 +1,13 @@
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { dbConfig } from '@config/db.config';
 import { ApiError } from '@shared/errors/api-error';
-import type { LanggananDoc, PaketDoc, PelangganDoc } from '@shared/types/doc.types';
+import type { AdminDoc, LanggananDoc, PaketDoc, PelangganDoc } from '@shared/types/doc.types';
 
 interface CollectionsByName {
     pelanggan: PelangganDoc;
     paket: PaketDoc;
     langganan: LanggananDoc;
+    admin: AdminDoc;
 }
 
 class Database {
