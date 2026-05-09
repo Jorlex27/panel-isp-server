@@ -20,8 +20,8 @@ export interface PaketDoc {
 export interface PelangganDoc {
     _id: ObjectId;
     nama: string;
-    noHp: string;
-    alamat: string;
+    noHp?: string;
+    alamat?: string;
     macAddress: string;
     ipAddress: string;
     status: 'aktif' | 'suspend';

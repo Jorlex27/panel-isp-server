@@ -6,10 +6,9 @@ export const pelangganStatusSchema = z.enum(['aktif', 'suspend']);
 
 export const pelangganCreateSchema = z.object({
     nama: z.string().min(1),
-    noHp: z.string().min(1),
-    alamat: z.string().min(1),
+    noHp: z.string().optional(),
+    alamat: z.string().optional(),
     macAddress: z.string().min(1),
-    ipAddress: z.string().min(1),
     paketId: objectIdString,
     status: pelangganStatusSchema.optional(),
     tanggalMulai: z.coerce.date().optional(),

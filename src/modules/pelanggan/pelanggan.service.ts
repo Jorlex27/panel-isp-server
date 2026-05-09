@@ -15,6 +15,24 @@ import type { BayarBodyInput, GantiPaketBodyInput, PelangganCreateInput } from '
 
 const col = () => db.getCollection('pelanggan');
 
+async function assignNextIp(): Promise<string> {
+    const network = process.env.IP_POOL_NETWORK ?? '192.168.2.0';
+    const start = Number(process.env.IP_POOL_START ?? '2');
+    const end = Number(process.env.IP_POOL_END ?? '254');
+    const prefix = network.split('.').slice(0, 3).join('.');
+
+    const taken = await col()
+        .find({}, { projection: { ipAddress: 1 } })
+        .toArray();
+    const takenSet = new Set(taken.map((p) => p.ipAddress));
+
+    for (let i = start; i <= end; i++) {
+        const ip = `${prefix}.${i}`;
+        if (!takenSet.has(ip)) return ip;
+    }
+    throw new ApiError('IP pool habis', 500, 'IP_POOL_EXHAUSTED');
+}
+
 const pelangganPopulatePipeline = [
     {
         $lookup: {
@@ -77,13 +95,14 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
         input.tanggalExpire ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const statusBayar = input.statusBayar ?? 'belum_bayar';
     const statusPel = input.status ?? 'aktif';
+    const ipAddress = await assignNextIp();
 
     const pelDoc = {
         nama: input.nama,
         noHp: input.noHp,
         alamat: input.alamat,
         macAddress: input.macAddress,
-        ipAddress: input.ipAddress,
+        ipAddress,
         status: statusPel,
         createdAt: now,
         updatedAt: now,
@@ -107,7 +126,7 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
 
     try {
         await tambahPelanggan(
-            input.ipAddress,
+            ipAddress,
             input.macAddress,
             paket.speedDown,
             paket.speedUp,
