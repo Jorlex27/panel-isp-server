@@ -88,3 +88,20 @@ export async function hapusPelanggan(ip: string, nama: string): Promise<void> {
         if (lid) await conn.write('/ip/dhcp-server/lease/remove', [`=.id=${lid}`]);
     });
 }
+
+export async function gantiPaketMikrotik(
+    nama: string,
+    speedDown: number,
+    speedUp: number
+): Promise<void> {
+    await withRos(async conn => {
+        const res = await conn.write('/queue/simple/print', [`?name=${nama}`]);
+        const id = res[0] ? rosStr(res[0] as Record<string, unknown>, '.id') : undefined;
+        if (id) {
+            await conn.write('/queue/simple/set', [
+                `=.id=${id}`,
+                `=max-limit=${speedDown}M/${speedUp}M`,
+            ]);
+        }
+    });
+}

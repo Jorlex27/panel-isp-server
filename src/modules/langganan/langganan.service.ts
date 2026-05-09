@@ -109,3 +109,10 @@ export async function recordBayar(
     await col().updateOne({ pelangganId }, { $push: { historyPembayaran: entry } });
     return getLangganan(existing._id);
 }
+
+export async function updatePaketId(pelangganId: ObjectId, paketId: ObjectId): Promise<void> {
+    await col().updateOne(
+        { pelangganId },
+        { $set: { paketId, updatedAt: new Date() } }
+    );
+}

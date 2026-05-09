@@ -2,7 +2,7 @@ import { ObjectId } from 'mongodb';
 import { Hono } from 'hono';
 import { ApiError } from '@shared/errors/api-error';
 import { objectIdString } from '@shared/schemas/object-id.schema';
-import { bayarBodySchema, pelangganCreateSchema } from './pelanggan.schema';
+import { bayarBodySchema, gantiPaketBodySchema, pelangganCreateSchema } from './pelanggan.schema';
 import * as pelangganService from './pelanggan.service';
 
 function parseObjectId(param: string, label: string): ObjectId {
@@ -41,6 +41,12 @@ export const pelangganRouter = new Hono()
         const body = bayarBodySchema.parse(await c.req.json());
         const result = await pelangganService.bayarPelanggan(id, body);
         return c.json({ success: true, data: result });
+    })
+    .patch('/:id/ganti-paket', async c => {
+        const id = parseObjectId(c.req.param('id'), 'ID pelanggan');
+        const body = gantiPaketBodySchema.parse(await c.req.json());
+        const data = await pelangganService.gantiPaket(id, body);
+        return c.json({ success: true, data });
     })
     .delete('/:id', async c => {
         const id = parseObjectId(c.req.param('id'), 'ID pelanggan');

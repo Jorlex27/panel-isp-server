@@ -6,11 +6,12 @@ import * as paketService from '@modules/paket/paket.service';
 import * as langgananService from '@modules/langganan/langganan.service';
 import {
     aktifkanPelanggan,
+    gantiPaketMikrotik,
     hapusPelanggan,
     suspendPelanggan,
     tambahPelanggan,
 } from '@/services/mikrotik.service';
-import type { BayarBodyInput, PelangganCreateInput } from './pelanggan.schema';
+import type { BayarBodyInput, GantiPaketBodyInput, PelangganCreateInput } from './pelanggan.schema';
 
 const col = () => db.getCollection('pelanggan');
 
@@ -164,4 +165,16 @@ export async function bayarPelanggan(
         await col().updateOne({ _id: id }, { $set: { status: 'aktif', updatedAt: new Date() } });
     }
     return { langganan: lang, expire: lang.tanggalExpire };
+}
+
+export async function gantiPaket(
+    id: ObjectId,
+    input: GantiPaketBodyInput
+): Promise<PelangganPopulated> {
+    const paketId = new ObjectId(input.paketId);
+    const pel = await getPelanggan(id);
+    const paket = await paketService.getPaket(paketId);
+    await gantiPaketMikrotik(pel.nama, paket.speedDown, paket.speedUp);
+    await langgananService.updatePaketId(id, paketId);
+    return getPelanggan(id);
 }

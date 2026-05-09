@@ -24,3 +24,9 @@ export const bayarBodySchema = z.object({
 
 export type PelangganCreateInput = z.infer<typeof pelangganCreateSchema>;
 export type BayarBodyInput = z.infer<typeof bayarBodySchema>;
+
+export const gantiPaketBodySchema = z.object({
+    paketId: objectIdString,
+});
+
+export type GantiPaketBodyInput = z.infer<typeof gantiPaketBodySchema>;
