@@ -32,6 +32,12 @@ export const paketRouter = new Hono()
         const data = await paketService.updatePaket(id, body);
         return c.json({ success: true, data });
     })
+    .put('/:id', async c => {
+        const id = parseObjectId(c.req.param('id'), 'ID paket');
+        const body = paketUpdateSchema.parse(await c.req.json());
+        const data = await paketService.updatePaket(id, body);
+        return c.json({ success: true, data });
+    })
     .delete('/:id', async c => {
         const id = parseObjectId(c.req.param('id'), 'ID paket');
         await paketService.deletePaket(id);

@@ -51,8 +51,70 @@ async function removeFromAddressList(client: MikrotikRestClient, ip: string): Pr
     if (id) await client.remove('ip/firewall/address-list', id);
 }
 
+function pelangganWanIface(): string {
+    return process.env.MIKROTIK_PELANGGAN_INTERFACE ?? 'ether4';
+}
+
+async function simpleQueueIdForPelanggan(
+    client: MikrotikRestClient,
+    ip: string,
+    nama?: string
+): Promise<string | undefined> {
+    if (nama) {
+        const byName = await client.print('queue/simple', { name: nama });
+        const nid = byName[0] ? rosStr(byName[0], '.id') : undefined;
+        if (nid) return nid;
+    }
+    for (const target of [`${ip}/32`, ip]) {
+        const rows = await client.print('queue/simple', { target });
+        const id = rows[0] ? rosStr(rows[0], '.id') : undefined;
+        if (id) return id;
+    }
+    return undefined;
+}
+
+function maxPenggunaFirewallComment(ip: string): string {
+    return `panel-isp-connlim-${ip.replace(/\./g, '-')}`;
+}
+
+async function removeMaxPenggunaFirewallRules(client: MikrotikRestClient, ip: string): Promise<void> {
+    const rows = await client.print('ip/firewall/filter', { comment: maxPenggunaFirewallComment(ip) });
+    for (const row of rows) {
+        const rid = rosStr(row, '.id');
+        if (rid) await client.remove('ip/firewall/filter', rid);
+    }
+}
+
+export async function applyMaxPenggunaMikrotik(ip: string, max: number | undefined): Promise<void> {
+    await withMt(async client => {
+        await removeMaxPenggunaFirewallRules(client, ip);
+        if (max === undefined || max < 2) return;
+        const created = await client.add('ip/firewall/filter', {
+            chain: 'forward',
+            'in-interface': pelangganWanIface(),
+            'src-address': ip,
+            'connection-state': 'new',
+            'connection-limit': `${max},1`,
+            action: 'drop',
+            comment: maxPenggunaFirewallComment(ip),
+        });
+        const newId = rosStr(created, '.id');
+        const anchors = await client.print('ip/firewall/filter', { comment: 'izin-pelanggan-aktif' });
+        const destId = anchors[0] ? rosStr(anchors[0], '.id') : undefined;
+        if (newId && destId) {
+            try {
+                await client.postAction('ip/firewall/filter/move', { numbers: newId, destination: destId });
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                logger.warn(`applyMaxPenggunaMikrotik: aturan ditempatkan di akhir rantai; geser manual jika perlu. Move: ${msg}`);
+            }
+        }
+    });
+}
+
 export async function setupAwal(): Promise<void> {
     await withMt(async client => {
+        const pelIface = pelangganWanIface();
         const eth2 = await client.print('ip/address', { interface: 'ether2' });
         if (eth2.length === 0) {
             await client.add('ip/address', {
@@ -61,11 +123,11 @@ export async function setupAwal(): Promise<void> {
             });
         }
 
-        const eth4 = await client.print('ip/address', { interface: 'ether4' });
-        if (eth4.length === 0) {
+        const pelIfAddr = await client.print('ip/address', { interface: pelIface });
+        if (pelIfAddr.length === 0) {
             await client.add('ip/address', {
                 address: '10.10.0.1/24',
-                interface: 'ether4',
+                interface: pelIface,
             });
         }
 
@@ -77,11 +139,11 @@ export async function setupAwal(): Promise<void> {
             });
         }
 
-        const dhcp = await client.print('ip/dhcp-server', { interface: 'ether4' });
+        const dhcp = await client.print('ip/dhcp-server', { interface: pelIface });
         if (dhcp.length === 0) {
             await client.add('ip/dhcp-server', {
                 name: 'dhcp-pelanggan',
-                interface: 'ether4',
+                interface: pelIface,
                 'address-pool': 'pool-pelanggan',
                 disabled: 'no',
             });
@@ -106,7 +168,7 @@ export async function setupAwal(): Promise<void> {
         if (fwAllow.length === 0) {
             await client.add('ip/firewall/filter', {
                 chain: 'forward',
-                'in-interface': 'ether4',
+                'in-interface': pelIface,
                 'src-address-list': 'pelanggan-aktif',
                 action: 'accept',
                 comment: 'izin-pelanggan-aktif',
@@ -117,7 +179,7 @@ export async function setupAwal(): Promise<void> {
         if (fwDrop.length === 0) {
             await client.add('ip/firewall/filter', {
                 chain: 'forward',
-                'in-interface': 'ether4',
+                'in-interface': pelIface,
                 action: 'drop',
                 comment: 'blokir-pelanggan-nonaktif',
             });
@@ -151,10 +213,9 @@ export async function tambahPelanggan(
     });
 }
 
-export async function suspendPelanggan(ip: string): Promise<void> {
+export async function suspendPelanggan(ip: string, nama?: string): Promise<void> {
     await withMt(async client => {
-        const res = await client.print('queue/simple', { target: `${ip}/32` });
-        const id = res[0] ? rosStr(res[0], '.id') : undefined;
+        const id = await simpleQueueIdForPelanggan(client, ip, nama);
         if (id) {
             await client.set('queue/simple', id, { 'max-limit': '256k/256k' });
         }
@@ -162,12 +223,24 @@ export async function suspendPelanggan(ip: string): Promise<void> {
     });
 }
 
-export async function aktifkanPelanggan(ip: string, speedDown: number, speedUp: number): Promise<void> {
+export async function aktifkanPelanggan(
+    ip: string,
+    speedDown: number,
+    speedUp: number,
+    nama: string
+): Promise<void> {
+    const maxLimit = `${speedDown}M/${speedUp}M`;
     await withMt(async client => {
-        const res = await client.print('queue/simple', { target: `${ip}/32` });
-        const id = res[0] ? rosStr(res[0], '.id') : undefined;
-        if (id) {
-            await client.set('queue/simple', id, { 'max-limit': `${speedDown}M/${speedUp}M` });
+        let id = await simpleQueueIdForPelanggan(client, ip, nama);
+        if (!id) {
+            const created = await client.add('queue/simple', {
+                name: nama,
+                target: ip,
+                'max-limit': maxLimit,
+            });
+            id = rosStr(created, '.id');
+        } else {
+            await client.set('queue/simple', id, { 'max-limit': maxLimit });
         }
         await addToAddressList(client, ip);
     });
@@ -175,8 +248,12 @@ export async function aktifkanPelanggan(ip: string, speedDown: number, speedUp: 
 
 export async function hapusPelanggan(ip: string, nama: string): Promise<void> {
     await withMt(async client => {
+        await removeMaxPenggunaFirewallRules(client, ip);
         const queue = await client.print('queue/simple', { name: nama });
-        const qid = queue[0] ? rosStr(queue[0], '.id') : undefined;
+        let qid = queue[0] ? rosStr(queue[0], '.id') : undefined;
+        if (!qid) {
+            qid = await simpleQueueIdForPelanggan(client, ip, nama);
+        }
         if (qid) await client.remove('queue/simple', qid);
 
         const lease = await client.print('ip/dhcp-server/lease', { address: ip });
@@ -187,18 +264,25 @@ export async function hapusPelanggan(ip: string, nama: string): Promise<void> {
     });
 }
 
-export async function gantiPaketMikrotik(
-    nama: string,
-    speedDown: number,
-    speedUp: number
-): Promise<void> {
+export async function gantiPaketMikrotik(nama: string, maxLimit: string): Promise<void> {
     await withMt(async client => {
         const res = await client.print('queue/simple', { name: nama });
         const id = res[0] ? rosStr(res[0], '.id') : undefined;
         if (id) {
-            await client.set('queue/simple', id, { 'max-limit': `${speedDown}M/${speedUp}M` });
+            await client.set('queue/simple', id, { 'max-limit': maxLimit });
         } else {
             logger.warn(`gantiPaketMikrotik: queue '${nama}' tidak ditemukan di MikroTik`);
+        }
+    });
+}
+
+export async function renameSimpleQueue(namaLama: string, namaBaru: string): Promise<void> {
+    if (namaLama === namaBaru) return;
+    await withMt(async client => {
+        const res = await client.print('queue/simple', { name: namaLama });
+        const id = res[0] ? rosStr(res[0], '.id') : undefined;
+        if (id) {
+            await client.set('queue/simple', id, { name: namaBaru });
         }
     });
 }

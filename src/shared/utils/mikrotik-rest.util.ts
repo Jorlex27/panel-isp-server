@@ -56,6 +56,29 @@ export class MikrotikRestClient {
         }
     }
 
+    async getJson(menu: string): Promise<unknown> {
+        const res = await this.request(menu, { method: 'GET' });
+        if (!res.ok) {
+            const t = await res.text();
+            throw new Error(`MikroTik REST GET ${menu}: ${res.status} ${t}`);
+        }
+        return res.json();
+    }
+
+    async postAction(path: string, body: Record<string, unknown>): Promise<unknown> {
+        const res = await this.request(path, {
+            method: 'POST',
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const t = await res.text();
+            throw new Error(`MikroTik REST POST ${path}: ${res.status} ${t}`);
+        }
+        const txt = await res.text();
+        if (!txt) return null;
+        return JSON.parse(txt) as unknown;
+    }
+
     async print(menu: string, query: Record<string, string> = {}): Promise<RosRow[]> {
         const q = new URLSearchParams(query);
         const path = q.toString() ? `${menu}?${q}` : menu;

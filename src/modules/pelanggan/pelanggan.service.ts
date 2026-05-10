@@ -1,15 +1,18 @@
 import { ObjectId } from 'mongodb';
 import { db } from '@shared/utils/db.util';
 import { ApiError } from '@shared/errors/api-error';
+import { logger } from '@shared/utils/logger.util';
 import type { LanggananPopulated, PelangganPopulated } from '@shared/types/doc.types';
 import * as paketService from '@modules/paket/paket.service';
 import * as langgananService from '@modules/langganan/langganan.service';
 import {
     aktifkanPelanggan,
+    applyMaxPenggunaMikrotik,
     gantiMacMikrotik,
     gantiPaketMikrotik,
     hapusPelanggan,
     normalizeMac,
+    renameSimpleQueue,
     suspendPelanggan,
     tambahPelanggan,
 } from '@/services/mikrotik.service';
@@ -18,8 +21,8 @@ import type { BayarBodyInput, GantiMacInput, GantiPaketBodyInput, PelangganCreat
 const col = () => db.getCollection('pelanggan');
 
 async function assignNextIp(): Promise<string> {
-    const network = process.env.IP_POOL_NETWORK ?? '192.168.2.0';
-    const start = Number(process.env.IP_POOL_START ?? '2');
+    const network = process.env.IP_POOL_NETWORK ?? '10.10.0.0';
+    const start = Number(process.env.IP_POOL_START ?? '10');
     const end = Number(process.env.IP_POOL_END ?? '254');
     const prefix = network.split('.').slice(0, 3).join('.');
 
@@ -105,6 +108,7 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
         macAddress: input.macAddress,
         ipAddress,
         status: statusPel,
+        ...(input.maxPengguna !== undefined ? { maxPengguna: input.maxPengguna } : {}),
         createdAt: now,
         updatedAt: now,
     };
@@ -120,6 +124,17 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
 
     try {
         await tambahPelanggan(ipAddress, input.macAddress, paket.speedDown, paket.speedUp, input.nama);
+        if (statusPel === 'suspend') {
+            await suspendPelanggan(ipAddress, input.nama);
+        }
+        const created = await getPelanggan(pelangganId);
+        try {
+            await applyMaxPenggunaMikrotik(created.ipAddress, created.maxPengguna);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            logger.warn(`createPelanggan: max pengguna MikroTik gagal: ${msg}`);
+        }
+        return created;
     } catch (error: unknown) {
         await db.withTransaction(async (session) => {
             await langgananService.deleteByPelangganId(pelangganId, session);
@@ -127,8 +142,6 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
         });
         throw error;
     }
-
-    return getPelanggan(pelangganId);
 }
 
 export async function suspendPelangganDb(id: ObjectId): Promise<PelangganPopulated> {
@@ -136,7 +149,7 @@ export async function suspendPelangganDb(id: ObjectId): Promise<PelangganPopulat
     const prev = pel.status;
     await col().updateOne({ _id: id }, { $set: { status: 'suspend', updatedAt: new Date() } });
     try {
-        await suspendPelanggan(pel.ipAddress);
+        await suspendPelanggan(pel.ipAddress, pel.nama);
     } catch (error: unknown) {
         await col().updateOne({ _id: id }, { $set: { status: prev, updatedAt: new Date() } });
         throw error;
@@ -149,7 +162,7 @@ export async function aktifkanPelangganDb(id: ObjectId): Promise<PelangganPopula
     const lang = await langgananService.requireByPelangganId(id);
     const pak = lang.paket;
     if (!pak) throw ApiError.badRequest('Paket langganan tidak ditemukan', 'MISSING_PAKET');
-    await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp);
+    await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp, pel.nama);
     await col().updateOne({ _id: id }, { $set: { status: 'aktif', updatedAt: new Date() } });
     return getPelanggan(id);
 }
@@ -172,7 +185,7 @@ export async function bayarPelanggan(
     if (pel.status === 'suspend') {
         const pak = lang.paket;
         if (!pak) throw ApiError.badRequest('Paket tidak ditemukan', 'MISSING_PAKET');
-        await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp);
+        await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp, pel.nama);
         await col().updateOne({ _id: id }, { $set: { status: 'aktif', updatedAt: new Date() } });
     }
     return { langganan: lang, expire: lang.tanggalExpire };
@@ -185,7 +198,11 @@ export async function gantiPaket(
     const paketId = new ObjectId(input.paketId);
     const pel = await getPelanggan(id);
     const paket = await paketService.getPaket(paketId);
-    await gantiPaketMikrotik(pel.nama, paket.speedDown, paket.speedUp);
+    const maxLimit =
+        pel.status === 'suspend'
+            ? '256k/256k'
+            : `${paket.speedDown}M/${paket.speedUp}M`;
+    await gantiPaketMikrotik(pel.nama, maxLimit);
     await langgananService.updatePaketId(id, paketId);
     return getPelanggan(id);
 }
@@ -194,8 +211,33 @@ export async function updatePelangganInfo(
     id: ObjectId,
     input: PelangganUpdateInfoInput
 ): Promise<PelangganPopulated> {
-    await col().updateOne({ _id: id }, { $set: { ...input, updatedAt: new Date() } });
-    return getPelanggan(id);
+    const prev = await getPelanggan(id);
+    const $set: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.nama !== undefined) $set.nama = input.nama;
+    if (input.noHp !== undefined) $set.noHp = input.noHp;
+    if (input.alamat !== undefined) $set.alamat = input.alamat;
+    if (input.maxPengguna === null) {
+        await col().updateOne({ _id: id }, { $set, $unset: { maxPengguna: '' } });
+    } else {
+        if (input.maxPengguna !== undefined) $set.maxPengguna = input.maxPengguna;
+        await col().updateOne({ _id: id }, { $set });
+    }
+    if (input.nama !== undefined && input.nama !== prev.nama) {
+        try {
+            await renameSimpleQueue(prev.nama, input.nama);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            logger.warn(`updatePelangganInfo: rename queue MikroTik gagal: ${msg}`);
+        }
+    }
+    const updated = await getPelanggan(id);
+    try {
+        await applyMaxPenggunaMikrotik(updated.ipAddress, updated.maxPengguna);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.warn(`updatePelangganInfo: max pengguna MikroTik gagal: ${msg}`);
+    }
+    return updated;
 }
 
 export async function gantiMacPelanggan(

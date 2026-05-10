@@ -21,7 +21,7 @@ async function suspendExpiredUnpaid(): Promise<void> {
         const pel = await pelCol.findOne({ _id: pelangganId });
         if (!pel || typeof pel.ipAddress !== 'string' || typeof pel.nama !== 'string') continue;
         try {
-            await suspendPelanggan(pel.ipAddress);
+            await suspendPelanggan(pel.ipAddress, pel.nama);
             await pelCol.updateOne(
                 { _id: pelangganId },
                 { $set: { status: 'suspend', updatedAt: new Date() } }

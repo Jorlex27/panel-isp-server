@@ -14,6 +14,7 @@ export const pelangganCreateSchema = z.object({
     tanggalMulai: z.coerce.date().optional(),
     tanggalExpire: z.coerce.date().optional(),
     statusBayar: pembayaranStatusSchema.optional(),
+    maxPengguna: z.number().int().min(2).max(65535).optional(),
 });
 
 export const bayarBodySchema = z.object({
@@ -34,6 +35,7 @@ export const pelangganUpdateInfoSchema = z.object({
     nama: z.string().min(1).optional(),
     noHp: z.string().optional(),
     alamat: z.string().optional(),
+    maxPengguna: z.union([z.number().int().min(2).max(65535), z.null()]).optional(),
 });
 
 export const gantiMacSchema = z.object({
