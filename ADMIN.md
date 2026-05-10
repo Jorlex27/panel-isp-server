@@ -179,8 +179,11 @@ GET /dashboard/summary
 
 ### Tambah pelanggan baru (dengan router TP-Link / router rumahan)
 1. Pastikan paket sudah ada → `GET /paket`
-2. Ambil **MAC address WAN port** router pelanggan — tercetak di label bawah router, tulisannya "WAN MAC" atau "MAC Address". Format `AA:BB:CC:DD:EE:FF`
-3. Daftarkan via API:
+2. Ambil **MAC WAN port** router pelanggan:
+   - Cek label bawah router, cari tulisan **"WAN MAC"**
+   - Kalau tidak ada label WAN MAC → buka admin router → **Status** atau **Network → WAN → MAC Address**
+   - > **Jangan pakai MAC LAN** — MAC yang tercetak besar di label biasanya adalah MAC LAN. WAN MAC biasanya beda 1 angka terakhir dari LAN MAC, tapi lebih aman cek langsung di admin router.
+3. Daftarkan via panel dengan MAC WAN:
    ```http
    POST /pelanggan
    {
@@ -192,7 +195,9 @@ GET /dashboard/summary
    → MikroTik otomatis buat static lease untuk MAC itu, assign IP `10.10.0.x`, internet aktif
 4. Setting router pelanggan (sekali saja):
    - WAN mode: **DHCP** (bukan static, bukan PPPoE)
+   - Operation mode: **Wireless Router** (bukan Access Point / Bridge)
    - LAN/WiFi: bebas, terserah pelanggan
+5. Reboot router → WAN dapat IP `10.10.0.x` → internet aktif untuk semua device di balik router
 
 ### Pelanggan belum bayar → suspend
 1. `PATCH /pelanggan/:id/suspend`
