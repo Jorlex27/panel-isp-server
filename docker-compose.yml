@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: panel_isp_server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    networks:
+      - panel_isp_network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          'echo ''await fetch("http://localhost:3000/health")'' | bun run -',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - app_uploads:/app/uploads
+
+volumes:
+  app_uploads:
+    driver: local
+
+networks:
+  panel_isp_network:
+    driver: bridge
