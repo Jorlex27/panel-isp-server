@@ -2,7 +2,7 @@ import { ObjectId } from 'mongodb';
 import { Hono } from 'hono';
 import { ApiError } from '@shared/errors/api-error';
 import { objectIdString } from '@shared/schemas/object-id.schema';
-import { bayarBodySchema, gantiPaketBodySchema, pelangganCreateSchema } from './pelanggan.schema';
+import { bayarBodySchema, gantiMacSchema, gantiPaketBodySchema, pelangganCreateSchema, pelangganUpdateInfoSchema } from './pelanggan.schema';
 import * as pelangganService from './pelanggan.service';
 
 function parseObjectId(param: string, label: string): ObjectId {
@@ -46,6 +46,18 @@ export const pelangganRouter = new Hono()
         const id = parseObjectId(c.req.param('id'), 'ID pelanggan');
         const body = gantiPaketBodySchema.parse(await c.req.json());
         const data = await pelangganService.gantiPaket(id, body);
+        return c.json({ success: true, data });
+    })
+    .patch('/:id', async c => {
+        const id = parseObjectId(c.req.param('id'), 'ID pelanggan');
+        const body = pelangganUpdateInfoSchema.parse(await c.req.json());
+        const data = await pelangganService.updatePelangganInfo(id, body);
+        return c.json({ success: true, data });
+    })
+    .patch('/:id/ganti-mac', async c => {
+        const id = parseObjectId(c.req.param('id'), 'ID pelanggan');
+        const body = gantiMacSchema.parse(await c.req.json());
+        const data = await pelangganService.gantiMacPelanggan(id, body.macAddress);
         return c.json({ success: true, data });
     })
     .delete('/:id', async c => {

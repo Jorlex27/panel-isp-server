@@ -6,12 +6,14 @@ import * as paketService from '@modules/paket/paket.service';
 import * as langgananService from '@modules/langganan/langganan.service';
 import {
     aktifkanPelanggan,
+    gantiMacMikrotik,
     gantiPaketMikrotik,
     hapusPelanggan,
+    normalizeMac,
     suspendPelanggan,
     tambahPelanggan,
 } from '@/services/mikrotik.service';
-import type { BayarBodyInput, GantiPaketBodyInput, PelangganCreateInput } from './pelanggan.schema';
+import type { BayarBodyInput, GantiMacInput, GantiPaketBodyInput, PelangganCreateInput, PelangganUpdateInfoInput } from './pelanggan.schema';
 
 const col = () => db.getCollection('pelanggan');
 
@@ -185,5 +187,24 @@ export async function gantiPaket(
     const paket = await paketService.getPaket(paketId);
     await gantiPaketMikrotik(pel.nama, paket.speedDown, paket.speedUp);
     await langgananService.updatePaketId(id, paketId);
+    return getPelanggan(id);
+}
+
+export async function updatePelangganInfo(
+    id: ObjectId,
+    input: PelangganUpdateInfoInput
+): Promise<PelangganPopulated> {
+    await col().updateOne({ _id: id }, { $set: { ...input, updatedAt: new Date() } });
+    return getPelanggan(id);
+}
+
+export async function gantiMacPelanggan(
+    id: ObjectId,
+    macAddress: string
+): Promise<PelangganPopulated> {
+    const pel = await getPelanggan(id);
+    await gantiMacMikrotik(pel.ipAddress, macAddress);
+    const normalized = normalizeMac(macAddress);
+    await col().updateOne({ _id: id }, { $set: { macAddress: normalized, updatedAt: new Date() } });
     return getPelanggan(id);
 }

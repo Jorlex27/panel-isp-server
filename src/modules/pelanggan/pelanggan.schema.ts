@@ -29,3 +29,16 @@ export const gantiPaketBodySchema = z.object({
 });
 
 export type GantiPaketBodyInput = z.infer<typeof gantiPaketBodySchema>;
+
+export const pelangganUpdateInfoSchema = z.object({
+    nama: z.string().min(1).optional(),
+    noHp: z.string().optional(),
+    alamat: z.string().optional(),
+});
+
+export const gantiMacSchema = z.object({
+    macAddress: z.string().min(1),
+});
+
+export type PelangganUpdateInfoInput = z.infer<typeof pelangganUpdateInfoSchema>;
+export type GantiMacInput = z.infer<typeof gantiMacSchema>;

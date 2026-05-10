@@ -33,9 +33,9 @@ export async function listLangganan(): Promise<LanggananPopulated[]> {
         .toArray();
 }
 
-export async function getLangganan(id: ObjectId): Promise<LanggananPopulated> {
+export async function getLangganan(id: ObjectId, session?: ClientSession): Promise<LanggananPopulated> {
     const rows = await col()
-        .aggregate<LanggananPopulated>([{ $match: { _id: id } }, ...langgananLookupRelations])
+        .aggregate<LanggananPopulated>([{ $match: { _id: id } }, ...langgananLookupRelations], { session })
         .toArray();
     if (!rows[0]) throw ApiError.notFound('Langganan tidak ditemukan');
     return rows[0];
@@ -67,7 +67,7 @@ export async function insertLangganan(
         updatedAt: now,
     };
     const res = await col().insertOne(doc as never, { session });
-    return getLangganan(res.insertedId);
+    return getLangganan(res.insertedId, session);
 }
 
 export async function createLanggananManual(payload: {
