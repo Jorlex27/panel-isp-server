@@ -9,28 +9,12 @@ const conn = new RouterOSAPI({
 
 await conn.connect();
 
-// Pool
-await conn.write('/ip/pool/add', [
-    '=name=pool-admin',
-    '=ranges=192.168.88.2-192.168.88.10',
-]);
-console.log('✓ Pool admin: 192.168.88.2-192.168.88.10');
-
-// DHCP server
-await conn.write('/ip/dhcp-server/add', [
-    '=name=dhcp-admin',
-    '=interface=ether2',
-    '=address-pool=pool-admin',
-    '=disabled=no',
-]);
-console.log('✓ DHCP server ether2');
-
-// DHCP network
-await conn.write('/ip/dhcp-server/network/add', [
-    '=address=192.168.88.0/24',
-    '=gateway=192.168.88.1',
-    '=dns-server=8.8.8.8,8.8.4.4',
-]);
-console.log('✓ DHCP network 192.168.88.0/24');
+const leases = await conn.write('/ip/dhcp-server/lease/print', ['?address=10.10.0.201']);
+const row = leases[0] as Record<string, unknown> | undefined;
+if (row) {
+    console.log(`WAN MAC TP-Link: ${row['mac-address']}`);
+} else {
+    console.log('Lease 10.10.0.201 tidak ditemukan');
+}
 
 await conn.close();

@@ -46,6 +46,14 @@ async function addToAddressList(conn: RouterOSAPI, ip: string): Promise<void> {
     }
 }
 
+async function clearLeaseByMac(conn: RouterOSAPI, mac: string): Promise<void> {
+    const leases = await conn.write('/ip/dhcp-server/lease/print', [`?mac-address=${mac}`]);
+    for (const lease of leases) {
+        const lid = rosStr(lease as Record<string, unknown>, '.id');
+        if (lid) await conn.write('/ip/dhcp-server/lease/remove', [`=.id=${lid}`]);
+    }
+}
+
 async function removeFromAddressList(conn: RouterOSAPI, ip: string): Promise<void> {
     const res = await conn.write('/ip/firewall/address-list/print', [
         '?list=pelanggan-aktif',
@@ -154,6 +162,7 @@ export async function tambahPelanggan(
 ): Promise<void> {
     const leaseMac = normalizeMac(mac);
     await withRos(async conn => {
+        await clearLeaseByMac(conn, leaseMac);
         await conn.write('/ip/dhcp-server/lease/add', [
             `=address=${ip}`,
             `=mac-address=${leaseMac}`,
@@ -229,6 +238,8 @@ export async function gantiPaketMikrotik(
 export async function gantiMacMikrotik(ip: string, newMac: string): Promise<void> {
     const normalizedMac = normalizeMac(newMac);
     await withRos(async conn => {
+        // Hapus semua lease dengan MAC baru (dynamic) agar device dapat static lease
+        await clearLeaseByMac(conn, normalizedMac);
         const res = await conn.write('/ip/dhcp-server/lease/print', [`?address=${ip}`]);
         const id = res[0] ? rosStr(res[0] as Record<string, unknown>, '.id') : undefined;
         if (id) {
