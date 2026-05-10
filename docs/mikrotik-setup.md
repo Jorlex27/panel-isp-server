@@ -50,24 +50,36 @@ Ganti `<WAN_INTERFACE>` dengan nama interface WAN (ether1, pppoe-out1, dll).
 
 ---
 
-### 4. RouterOS API
+### 4. REST API (RouterOS v7.1+)
 
-App berkomunikasi dengan Mikrotik via API port 8728. Harus diaktifkan:
+Panel memakai **HTTP REST** (`/rest/...`), bukan binary API port 8728. Layanan yang dipakai: **`www`** (HTTP) atau **`www-ssl`** (HTTPS)—lihat **IP → Services**.
 
-```
-/ip service enable api
-/ip service set api port=8728
-```
-
-Lewat Winbox: **IP → Services → api → centang Enable**
-
-Buat user khusus untuk API (jangan pakai admin):
+Contoh mengaktifkan akses HTTP (hanya jaringan terpercaya):
 
 ```
-/user add name=panel-api password=Jorlex22 group=full
+/ip service set www disabled=no port=80
 ```
 
----
+Disarankan produksi: aktifkan **`www-ssl`** dengan sertifikat, lalu di `.env` server set `MIKROTIK_REST_SCHEME=https` dan `MIKROTIK_REST_PORT=443` (atau sesuai port layanan).
+
+Variabel lingkungan:
+
+```env
+MIKROTIK_HOST=192.168.1.1
+MIKROTIK_REST_SCHEME=http
+MIKROTIK_REST_PORT=80
+MIKROTIK_REST_TLS_INSECURE=true
+MIKROTIK_USER=panel-api
+MIKROTIK_PASS=...
+```
+
+`MIKROTIK_REST_TLS_INSECURE=true` hanya untuk HTTPS dengan sertifikat self-signed; set `false` jika CA sudah dipercaya.
+
+User untuk autentikasi Basic (sama seperti login Winbox/API user):
+
+```
+/user add name=panel-api password=... group=full
+```
 
 ### 5. Simple Queue — Speed Limit
 
@@ -105,6 +117,6 @@ IP_POOL_END=254
 - [ ] IP address 192.168.2.1/24 di ether4
 - [ ] DHCP server tanpa dynamic pool di ether4
 - [ ] NAT masquerade dari 192.168.2.0/24 ke WAN
-- [ ] API service enabled (port 8728)
+- [ ] Layanan **www** atau **www-ssl** enabled; port cocok dengan `MIKROTIK_REST_*` di `.env`
 - [ ] User `panel-api` dibuat dengan akses full
-- [ ] Tidak ada firewall rule yang block koneksi dari server ke port 8728
+- [ ] Firewall mengizinkan koneksi dari server panel ke port REST (80/443 dst.)
