@@ -1,3 +1,5 @@
+import { logger } from '@shared/utils/logger.util';
+
 export async function kirimDiscord(
     pesan: string,
     title: string = 'Panel ISP Notifikasi',
@@ -12,5 +14,12 @@ export async function kirimDiscord(
         body: JSON.stringify({
             embeds: [{ title, description: pesan, color }],
         }),
+    });
+}
+
+export function kirimDiscordSafe(pesan: string, title: string, color: number = 0x5865f2): void {
+    void kirimDiscord(pesan, title, color).catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.warn(`Discord webhook gagal: ${msg}`);
     });
 }

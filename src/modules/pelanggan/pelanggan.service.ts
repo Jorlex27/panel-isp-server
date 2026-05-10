@@ -16,7 +16,8 @@ import {
     suspendPelanggan,
     tambahPelanggan,
 } from '@/services/mikrotik.service';
-import type { BayarBodyInput, GantiMacInput, GantiPaketBodyInput, PelangganCreateInput, PelangganUpdateInfoInput } from './pelanggan.schema';
+import type { BayarBodyInput, GantiPaketBodyInput, PelangganCreateInput, PelangganUpdateInfoInput } from './pelanggan.schema';
+import { kirimDiscordSafe } from '@/services/discord.service';
 
 const col = () => db.getCollection('pelanggan');
 
@@ -134,6 +135,15 @@ export async function createPelanggan(input: PelangganCreateInput): Promise<Pela
             const msg = e instanceof Error ? e.message : String(e);
             logger.warn(`createPelanggan: max pengguna MikroTik gagal: ${msg}`);
         }
+        const maxLine =
+            created.maxPengguna != null ? `\nMax pengguna: ${created.maxPengguna}` : '';
+        const suspendNote =
+            statusPel === 'suspend' ? '\nCatatan: dibuat langsung suspend (MikroTik).' : '';
+        kirimDiscordSafe(
+            `**${created.nama}**\nIP: \`${created.ipAddress}\`\nMAC: \`${created.macAddress}\`\nPaket: ${created.paket?.nama ?? '—'}\nStatus: ${created.status}\nStatus bayar: ${statusBayar}${maxLine}${suspendNote}`,
+            'Pelanggan baru',
+            0x57f287
+        );
         return created;
     } catch (error: unknown) {
         await db.withTransaction(async (session) => {
@@ -154,7 +164,13 @@ export async function suspendPelangganDb(id: ObjectId): Promise<PelangganPopulat
         await col().updateOne({ _id: id }, { $set: { status: prev, updatedAt: new Date() } });
         throw error;
     }
-    return getPelanggan(id);
+    const refreshed = await getPelanggan(id);
+    kirimDiscordSafe(
+        `**${refreshed.nama}** (${typeof refreshed.noHp === 'string' ? refreshed.noHp : '-'})\nIP: \`${refreshed.ipAddress}\``,
+        'Pelanggan disuspend',
+        0xe74c3c
+    );
+    return refreshed;
 }
 
 export async function aktifkanPelangganDb(id: ObjectId): Promise<PelangganPopulated> {
@@ -164,7 +180,13 @@ export async function aktifkanPelangganDb(id: ObjectId): Promise<PelangganPopula
     if (!pak) throw ApiError.badRequest('Paket langganan tidak ditemukan', 'MISSING_PAKET');
     await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp, pel.nama);
     await col().updateOne({ _id: id }, { $set: { status: 'aktif', updatedAt: new Date() } });
-    return getPelanggan(id);
+    const refreshed = await getPelanggan(id);
+    kirimDiscordSafe(
+        `**${refreshed.nama}** (${typeof refreshed.noHp === 'string' ? refreshed.noHp : '-'})\nIP: \`${refreshed.ipAddress}\``,
+        'Pelanggan diaktifkan',
+        0x57f287
+    );
+    return refreshed;
 }
 
 export async function deletePelangganDb(id: ObjectId): Promise<void> {
@@ -174,6 +196,11 @@ export async function deletePelangganDb(id: ObjectId): Promise<void> {
         await langgananService.deleteByPelangganId(id, session);
         await col().deleteOne({ _id: id }, { session });
     });
+    kirimDiscordSafe(
+        `**${pel.nama}**\nIP: \`${pel.ipAddress}\`\nMAC: \`${pel.macAddress}\``,
+        'Pelanggan dihapus',
+        0x992d22
+    );
 }
 
 export async function bayarPelanggan(
@@ -188,6 +215,12 @@ export async function bayarPelanggan(
         await aktifkanPelanggan(pel.ipAddress, pak.speedDown, pak.speedUp, pel.nama);
         await col().updateOne({ _id: id }, { $set: { status: 'aktif', updatedAt: new Date() } });
     }
+    const aktifPart = pel.status === 'suspend' ? '\nStatus: diaktifkan karena lunas.' : '';
+    kirimDiscordSafe(
+        `**${pel.nama}** (${typeof pel.noHp === 'string' ? pel.noHp : '-'})\nJumlah: Rp ${body.jumlah.toLocaleString('id-ID')}\nMetode: ${body.metode}${aktifPart}\nBerlaku s/d: ${lang.tanggalExpire instanceof Date ? lang.tanggalExpire.toLocaleDateString('id-ID') : String(lang.tanggalExpire)}`,
+        'Pembayaran pelanggan',
+        0xf1c40f
+    );
     return { langganan: lang, expire: lang.tanggalExpire };
 }
 
@@ -202,9 +235,16 @@ export async function gantiPaket(
         pel.status === 'suspend'
             ? '256k/256k'
             : `${paket.speedDown}M/${paket.speedUp}M`;
+    const paketLama = pel.paket?.nama ?? '—';
     await gantiPaketMikrotik(pel.nama, maxLimit);
     await langgananService.updatePaketId(id, paketId);
-    return getPelanggan(id);
+    const out = await getPelanggan(id);
+    kirimDiscordSafe(
+        `**${out.nama}**\nPaket: ${paketLama} → ${out.paket?.nama ?? '—'}`,
+        'Ganti paket pelanggan',
+        0x3498db
+    );
+    return out;
 }
 
 export async function updatePelangganInfo(
@@ -237,6 +277,31 @@ export async function updatePelangganInfo(
         const msg = e instanceof Error ? e.message : String(e);
         logger.warn(`updatePelangganInfo: max pengguna MikroTik gagal: ${msg}`);
     }
+    const parts: string[] = [];
+    if (input.nama !== undefined && input.nama !== prev.nama) {
+        parts.push(`Nama: ${prev.nama} → ${input.nama}`);
+    }
+    if (input.noHp !== undefined && input.noHp !== prev.noHp) {
+        parts.push(`HP: ${prev.noHp ?? '—'} → ${input.noHp}`);
+    }
+    if (input.alamat !== undefined && input.alamat !== prev.alamat) {
+        parts.push('Alamat diubah');
+    }
+    if (input.maxPengguna === null && prev.maxPengguna != null) {
+        parts.push(`Max pengguna dihapus (sebelum ${prev.maxPengguna})`);
+    } else if (
+        input.maxPengguna !== undefined &&
+        input.maxPengguna !== prev.maxPengguna
+    ) {
+        parts.push(`Max pengguna: ${prev.maxPengguna ?? '—'} → ${input.maxPengguna}`);
+    }
+    if (parts.length > 0) {
+        kirimDiscordSafe(
+            `**${updated.nama}**\nIP: \`${updated.ipAddress}\`\n${parts.join('\n')}`,
+            'Info pelanggan diubah',
+            0x95a5a6
+        );
+    }
     return updated;
 }
 
@@ -248,5 +313,11 @@ export async function gantiMacPelanggan(
     await gantiMacMikrotik(pel.ipAddress, macAddress);
     const normalized = normalizeMac(macAddress);
     await col().updateOne({ _id: id }, { $set: { macAddress: normalized, updatedAt: new Date() } });
-    return getPelanggan(id);
+    const out = await getPelanggan(id);
+    kirimDiscordSafe(
+        `**${out.nama}**\nIP: \`${out.ipAddress}\`\nMAC: \`${pel.macAddress}\` → \`${normalized}\``,
+        'Ganti MAC pelanggan',
+        0x9b59b6
+    );
+    return out;
 }
